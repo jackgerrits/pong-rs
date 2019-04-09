@@ -1,12 +1,15 @@
 use pancurses;
 use std::time::{Duration, SystemTime};
 
+mod math;
+use math::Vector;
+
 struct Position(f32, f32);
 
 struct Ball {
     position: Position,
     // 0 is directly up
-    _direction_in_degrees: u32,
+    velocity: Vector,
 }
 
 impl Ball {
@@ -18,6 +21,7 @@ struct Paddle {
     position: Position,
     // Defines the height in characters.
     height: i32,
+    normal: Vector,
 }
 
 impl Paddle {
@@ -46,7 +50,16 @@ fn draw_paddle(window: &pancurses::Window, paddle: &Paddle) {
 
 fn update(state: &mut GameState, input_key: Option<pancurses::Input>, delta: &Duration) {
     let delta_scale = 1.0 * (delta.as_micros() as f32 / 1e6);
-    state.ball.position.1 = state.ball.position.1 + delta_scale;
+
+    state.ball.position.0 += state.ball.velocity.0 * delta_scale;
+    state.ball.position.1 += state.ball.velocity.1 * delta_scale;
+
+    if state.ball.position.0 > 8.0 {
+        state
+            .ball
+            .velocity
+            .reflect(&mut Vector::new_normalized(-1.0, 0.0));
+    }
 
     match input_key {
         Some(pancurses::Input::KeyUp) => {
@@ -78,15 +91,18 @@ fn main() {
 
     let ball = Ball {
         position: Position(5.0, 4.0),
-        _direction_in_degrees: 0,
+        velocity: Vector::new_normalized(45.0, 45.0),
     };
+
     let player = Paddle {
         position: Position(0.0, 0.0),
         height: 5,
+        normal: Vector::new_normalized(1.0, 0.0),
     };
     let opponent = Paddle {
         position: Position(8.0, 0.0),
         height: 5,
+        normal: Vector::new_normalized(-1.0, 0.0),
     };
 
     let mut state = GameState {
