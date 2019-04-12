@@ -4,7 +4,10 @@ use std::time::{Duration, SystemTime};
 mod math;
 use math::Vector;
 
-struct Position(f32, f32);
+pub struct Position {
+    pub x: f32,
+    pub y: f32,
+}
 
 struct Ball {
     position: Position,
@@ -26,6 +29,12 @@ struct Paddle {
 
 impl Paddle {
     const SYMBOL: char = '#';
+
+    fn is_within(&self, positon: &Position) -> bool {
+        self.position.x as i32 == positon.x as i32
+            && self.position.y as i32 <= positon.y as i32
+            && self.position.y as i32 + self.height > positon.y as i32
+    }
 }
 
 struct GameState {
@@ -35,14 +44,14 @@ struct GameState {
 }
 
 fn draw_ball(window: &pancurses::Window, ball: &Ball) {
-    window.mvaddch(ball.position.1 as i32, ball.position.0 as i32, Ball::SYMBOL);
+    window.mvaddch(ball.position.y as i32, ball.position.x as i32, Ball::SYMBOL);
 }
 
 fn draw_paddle(window: &pancurses::Window, paddle: &Paddle) {
     for y_offset in 0..paddle.height {
         window.mvaddch(
-            paddle.position.1 as i32 + y_offset,
-            paddle.position.0 as i32,
+            paddle.position.y as i32 + y_offset,
+            paddle.position.x as i32,
             Paddle::SYMBOL,
         );
     }
@@ -51,22 +60,24 @@ fn draw_paddle(window: &pancurses::Window, paddle: &Paddle) {
 fn update(state: &mut GameState, input_key: Option<pancurses::Input>, delta: &Duration) {
     let delta_scale = 1.0 * (delta.as_micros() as f32 / 1e6);
 
-    state.ball.position.0 += state.ball.velocity.0 * delta_scale;
-    state.ball.position.1 += state.ball.velocity.1 * delta_scale;
+    state.ball.position.x += state.ball.velocity.x * delta_scale;
+    state.ball.position.y += state.ball.velocity.y * delta_scale;
 
-    if state.ball.position.0 > 8.0 {
-        state
-            .ball
-            .velocity
-            .reflect(&mut Vector::new_normalized(-1.0, 0.0));
+    // Ball collided with player.
+    if state.player.is_within(&state.ball.position) {
+        state.ball.velocity = state.ball.velocity.reflect(&mut state.player.normal);
+    }
+
+    if state.opponent.is_within(&state.ball.position) {
+        state.ball.velocity = state.ball.velocity.reflect(&mut state.opponent.normal);
     }
 
     match input_key {
         Some(pancurses::Input::KeyUp) => {
-            state.player.position.1 = state.player.position.1 - 10.0 * delta_scale;
+            state.player.position.y = state.player.position.y - 10.0 * delta_scale;
         }
         Some(pancurses::Input::KeyDown) => {
-            state.player.position.1 = state.player.position.1 + 10.0 * delta_scale;
+            state.player.position.y = state.player.position.y + 10.0 * delta_scale;
         }
         _ => (),
     }
@@ -90,17 +101,17 @@ fn main() {
     window.keypad(true);
 
     let ball = Ball {
-        position: Position(5.0, 4.0),
+        position: Position { x: 7.0, y: 2.0 },
         velocity: Vector::new_normalized(45.0, 45.0),
     };
 
     let player = Paddle {
-        position: Position(0.0, 0.0),
+        position: Position { x: 0.0, y: 0.0 },
         height: 5,
         normal: Vector::new_normalized(1.0, 0.0),
     };
     let opponent = Paddle {
-        position: Position(8.0, 0.0),
+        position: Position { x: 8.0, y: 0.0 },
         height: 5,
         normal: Vector::new_normalized(-1.0, 0.0),
     };
