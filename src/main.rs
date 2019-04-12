@@ -11,7 +11,6 @@ pub struct Position {
 
 struct Ball {
     position: Position,
-    // 0 is directly up
     velocity: Vector,
 }
 
@@ -41,6 +40,10 @@ struct GameState {
     player: Paddle,
     opponent: Paddle,
     ball: Ball,
+    max_x: i32,
+    max_y: i32,
+    player_score: i32,
+    opponent_score: i32,
 }
 
 fn draw_ball(window: &pancurses::Window, ball: &Ball) {
@@ -65,20 +68,39 @@ fn update(state: &mut GameState, input_key: Option<pancurses::Input>, delta: &Du
 
     // Ball collided with player.
     if state.player.is_within(&state.ball.position) {
-        state.ball.velocity = state.ball.velocity.reflect(&mut state.player.normal);
-    }
-
-    if state.opponent.is_within(&state.ball.position) {
-        state.ball.velocity = state.ball.velocity.reflect(&mut state.opponent.normal);
+        state.ball.velocity = state.ball.velocity.reflect(&state.player.normal);
+    } else if state.opponent.is_within(&state.ball.position) {
+        // Ball collided with opponent
+        state.ball.velocity = state.ball.velocity.reflect(&state.opponent.normal);
+    } else if state.ball.position.y as i32 <= 0 {
+        state.ball.velocity = state
+            .ball
+            .velocity
+            .reflect(&Vector::new_normalized(0.0, 1.0));
+    } else if state.ball.position.y as i32 >= state.max_y {
+        state.ball.velocity = state
+            .ball
+            .velocity
+            .reflect(&Vector::new_normalized(0.0, -1.0));
+    } else if state.ball.position.x as i32 <= 0 {
+        state.opponent_score += 1;
+        state.ball.position.x = (state.max_x / 2) as f32;
+        state.ball.position.y = (state.max_y / 2) as f32;
+        state.ball.velocity.x *= -1.0;
+    } else if state.ball.position.x as i32 >= state.max_x {
+        state.player_score += 1;
+        state.ball.position.x = (state.max_x / 2) as f32;
+        state.ball.position.y = (state.max_y / 2) as f32;
+        state.ball.velocity.x *= -1.0;
     }
 
     match input_key {
-        Some(pancurses::Input::KeyUp) => {
-            state.player.position.y = state.player.position.y - 10.0 * delta_scale;
-        }
+        Some(pancurses::Input::KeyUp) => state.opponent.position.y -= 10.0 * delta_scale,
         Some(pancurses::Input::KeyDown) => {
-            state.player.position.y = state.player.position.y + 10.0 * delta_scale;
+            state.opponent.position.y += 10.0 * delta_scale;
         }
+        Some(pancurses::Input::Character('a')) => state.player.position.y += 10.0 * delta_scale,
+        Some(pancurses::Input::Character('q')) => state.player.position.y -= 10.0 * delta_scale,
         _ => (),
     }
 }
@@ -88,11 +110,16 @@ fn draw(window: &pancurses::Window, state: &GameState) {
     draw_ball(&window, &state.ball);
     draw_paddle(&window, &state.player);
     draw_paddle(&window, &state.opponent);
+    window.mvaddstr(state.max_y - 2, 0, format!("Left: {}", state.player_score));
+    window.mvaddstr(
+        state.max_y - 1,
+        0,
+        format!("Right: {}", state.opponent_score),
+    );
     window.refresh();
 }
 
 fn main() {
-    /* Start pancurses. */
     let window = pancurses::initscr();
     pancurses::cbreak();
     pancurses::noecho();
@@ -100,19 +127,28 @@ fn main() {
     window.nodelay(true);
     window.keypad(true);
 
+    let max_x = window.get_max_x();
+    let max_y = window.get_max_y();
+
     let ball = Ball {
         position: Position { x: 7.0, y: 2.0 },
-        velocity: Vector::new_normalized(45.0, 45.0),
+        velocity: Vector { x: 15.0, y: 10.0 },
     };
 
     let player = Paddle {
-        position: Position { x: 0.0, y: 0.0 },
-        height: 5,
+        position: Position {
+            x: 0.0,
+            y: (max_y / 3) as f32,
+        },
+        height: max_y / 3,
         normal: Vector::new_normalized(1.0, 0.0),
     };
     let opponent = Paddle {
-        position: Position { x: 8.0, y: 0.0 },
-        height: 5,
+        position: Position {
+            x: (max_x - 1) as f32,
+            y: (max_y / 3) as f32,
+        },
+        height: max_y / 3,
         normal: Vector::new_normalized(-1.0, 0.0),
     };
 
@@ -120,21 +156,23 @@ fn main() {
         player,
         opponent,
         ball,
+        max_x,
+        max_y,
+        player_score: 0,
+        opponent_score: 0,
     };
 
     let mut current_time = SystemTime::now();
 
     loop {
         let next_time = SystemTime::now();
-        let difference = next_time
-            .duration_since(current_time)
-            .expect("SystemTime::duration_since failed");
+        let difference = next_time.duration_since(current_time).unwrap();
 
         let ch = window.getch();
 
-        match ch {
-            Some(pancurses::Input::Character('q')) => break,
-            _ => (),
+        // Quit if 'q' is pressed
+        if let Some(pancurses::Input::Character('x')) = ch {
+            break;
         }
 
         update(&mut state, ch, &difference);
@@ -146,6 +184,5 @@ fn main() {
         current_time = next_time;
     }
 
-    /* Terminate pancurses. */
     pancurses::endwin();
 }
